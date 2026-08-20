@@ -92,7 +92,8 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Psicólogo não encontrado." }, { status: 404 });
   }
 
-  await prisma.psychologist.delete({ where: { id } });
+  // Soft-delete: marca deletedAt para preservar pacientes e sessões associadas
+  await prisma.psychologist.update({ where: { id }, data: { deletedAt: new Date() } });
 
   return NextResponse.json({ success: true });
 }

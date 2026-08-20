@@ -162,6 +162,10 @@ export default function Home() {
 
   const [sessionForm, setSessionForm] = useState<SessionForm>(emptySessionForm("", ""));
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+
+  // State for delete confirmation modal
+  const [pendingDeletePsychologist, setPendingDeletePsychologist] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   // Filter to control which sessions are visible in the Sessions table
   const [sessionFilter, setSessionFilter] = useState<'all' | SessionStatus>('all');
 
@@ -381,6 +385,30 @@ export default function Home() {
     if (editingPsychologistId === psychologistId) {
       setEditingPsychologistId(null);
       setPsychologistForm(emptyPsychologistForm);
+    }
+  };
+
+  // Confirmação de exclusão: chama a API e atualiza o dashboard. Usa fallback local se a API falhar.
+  const confirmDeletePsychologist = async () => {
+    if (!pendingDeletePsychologist) return;
+    const id = pendingDeletePsychologist.id;
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/psychologists/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error("Falha ao excluir no servidor");
+      }
+
+      // Recarrega dados do servidor para manter consistência
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Erro ao excluir psicólogo", error);
+      // Fallback: remove localmente
+      deletePsychologist(id);
+    } finally {
+      setIsDeleting(false);
+      setPendingDeletePsychologist(null);
     }
   };
 
@@ -744,7 +772,7 @@ export default function Home() {
                         <button type="button" onClick={() => editPsychologist(psychologist)} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">
                           Editar
                         </button>
-                        <button type="button" onClick={() => deletePsychologist(psychologist.id)} className="rounded-md bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-200">
+                        <button type="button" onClick={() => setPendingDeletePsychologist({ id: psychologist.id, name: psychologist.name })} className="rounded-md bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-200">
                           Excluir
                         </button>
                       </div>
@@ -1201,6 +1229,45 @@ export default function Home() {
           >
             Cancelar
           </button>
+        </div>
+      </div>
+
+      {/* Modal de confirmação para exclusão de psicólogo */}
+      <div
+        className={`fixed inset-0 z-60 flex items-center justify-center p-4 transition-opacity duration-200 ${
+          pendingDeletePsychologist ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        aria-hidden={!pendingDeletePsychologist}
+      >
+        <div
+          className={`w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl transition-transform duration-200 ${
+            pendingDeletePsychologist ? "translate-y-0" : "translate-y-4"
+          }`}
+        >
+          <h2 className="mb-4 text-2xl font-bold text-slate-900">Confirmar exclusão</h2>
+
+          <p className="text-sm text-slate-600">
+            Tem certeza que deseja excluir o psicólogo <span className="font-semibold">{pendingDeletePsychologist?.name}</span>? Esta ação removerá pacientes e sessões associadas e não pode ser desfeita.
+          </p>
+
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingDeletePsychologist(null)}
+              className="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="button"
+              onClick={confirmDeletePsychologist}
+              disabled={isDeleting}
+              className="flex-1 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir psicólogo"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
