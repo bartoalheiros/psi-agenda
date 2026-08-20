@@ -136,6 +136,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [data, setData] = useState<AppData>(defaultData);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [selectedDebtor, setSelectedDebtor] = useState<{ id: string; name: string; phone: string; value: number } | null>(null);
 
   const [psychologistForm, setPsychologistForm] = useState<PsychologistForm>(emptyPsychologistForm);
   const [editingPsychologistId, setEditingPsychologistId] = useState<string | null>(null);
@@ -425,6 +426,37 @@ export default function Home() {
         session.id === sessionId ? { ...session, paid: !session.paid } : session,
       ),
     }));
+  };
+
+  const handleOpenDebtorModal = (session: {
+    id: string;
+    patientName: string;
+    phone: string;
+    value: number;
+  }) => {
+    setSelectedDebtor({
+      id: session.id,
+      name: session.patientName,
+      phone: session.phone,
+      value: session.value,
+    });
+  };
+
+  const handleCloseDebtorModal = () => setSelectedDebtor(null);
+
+  const handleGeneratePaymentLink = () => {
+    if (!selectedDebtor) return;
+
+    const tag = "SUA_TAG_AQUI";
+    const valor = selectedDebtor.value.toFixed(2);
+    const checkoutUrl = `https://infinitepay.io/${tag}?amount=${valor}`;
+    const formattedPhone = selectedDebtor.phone.replace(/\D/g, "");
+    const message = `Olá ${selectedDebtor.name}, tudo bem? Segue o link da InfinitePay para o acerto da nossa sessão pendente no valor de ${formatCurrency(selectedDebtor.value)}: ${checkoutUrl}`;
+    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    toggleSessionPaid(selectedDebtor.id);
+    handleCloseDebtorModal();
   };
 
   const statusClasses: Record<SessionStatus, string> = {
@@ -966,16 +998,39 @@ export default function Home() {
                       </tr>
                     )}
                     {unpaidSessions.map((session) => (
-                      <tr key={session.id} className="border-t border-slate-200 bg-rose-50">
+                      <tr
+                        key={session.id}
+                        onClick={() => handleOpenDebtorModal(session)}
+                        className="cursor-pointer border-t border-slate-200 bg-rose-50 transition hover:bg-rose-100"
+                      >
                         <td className="px-4 py-3 font-medium text-slate-800">{session.patientName}</td>
                         <td className="px-4 py-3 text-slate-600">{session.psychologistName}</td>
                         <td className="px-4 py-3 text-slate-600">{session.phone}</td>
                         <td className="px-4 py-3 text-slate-600">{formatDate(session.date)}</td>
                         <td className="px-4 py-3 font-semibold text-rose-600">{formatCurrency(session.value)}</td>
                         <td className="px-4 py-3">
-                          <button type="button" onClick={() => toggleSessionPaid(session.id)} className="rounded-md bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200">
-                            Confirmar pagamento
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenDebtorModal(session);
+                              }}
+                              className="rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-700"
+                            >
+                              Cobrar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleSessionPaid(session.id);
+                              }}
+                              className="rounded-md bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200"
+                            >
+                              Confirmar
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -986,6 +1041,48 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      <div
+        className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 transition-opacity duration-200 ${
+          selectedDebtor ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      >
+        <div
+          className={`w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl transition-transform duration-200 ${
+            selectedDebtor ? "translate-y-0" : "translate-y-4"
+          }`}
+        >
+          <h2 className="mb-4 text-2xl font-bold text-slate-900">Gerar Cobrança InfinitePay</h2>
+
+          <div className="space-y-3 text-sm text-slate-600">
+            <p>
+              <span className="font-semibold text-slate-800">Paciente:</span> {selectedDebtor?.name}
+            </p>
+            <p>
+              <span className="font-semibold text-slate-800">Valor:</span> {selectedDebtor ? formatCurrency(selectedDebtor.value) : ""}
+            </p>
+            <p className="text-xs text-slate-400">
+              Enviado à API como <span className="font-semibold text-slate-500">{selectedDebtor ? Math.round(selectedDebtor.value * 100) : 0}</span> centavos
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGeneratePaymentLink}
+            className="mt-6 w-full rounded-lg bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            ⚡ Gerar Checkout InfinitePay e Notificar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCloseDebtorModal}
+            className="mt-3 w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
