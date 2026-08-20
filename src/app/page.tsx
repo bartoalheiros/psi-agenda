@@ -455,7 +455,6 @@ export default function Home() {
     const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-    toggleSessionPaid(selectedDebtor.id);
     handleCloseDebtorModal();
   };
 
