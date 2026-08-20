@@ -162,6 +162,8 @@ export default function Home() {
 
   const [sessionForm, setSessionForm] = useState<SessionForm>(emptySessionForm("", ""));
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  // Filter to control which sessions are visible in the Sessions table
+  const [sessionFilter, setSessionFilter] = useState<'all' | SessionStatus>('all');
 
   const fetchDashboardData = async () => {
     try {
@@ -308,6 +310,20 @@ export default function Home() {
         }),
     [data],
   );
+
+  // Sessions filtered according to the sessionFilter control
+  const filteredSessions = useMemo(() => {
+    if (sessionFilter === 'all') return data.sessions;
+    return data.sessions.filter((s) => s.status === sessionFilter);
+  }, [data.sessions, sessionFilter]);
+
+  const sessionCounts = useMemo(() => {
+    const counts = { all: data.sessions.length, agendada: 0, realizada: 0, cancelada: 0 } as Record<string, number>;
+    for (const s of data.sessions) {
+      counts[s.status] = (counts[s.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [data.sessions]);
 
   const savePsychologist = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -986,6 +1002,36 @@ export default function Home() {
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-xl font-semibold text-slate-900">Agenda de atendimentos</h2>
 
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSessionFilter('all')}
+                    className={`rounded-full px-3 py-1 text-sm font-medium ${sessionFilter === 'all' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    Todas ({sessionCounts.all})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionFilter('agendada')}
+                    className={`rounded-full px-3 py-1 text-sm font-medium ${sessionFilter === 'agendada' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    Agendadas ({sessionCounts.agendada})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionFilter('realizada')}
+                    className={`rounded-full px-3 py-1 text-sm font-medium ${sessionFilter === 'realizada' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    Realizadas ({sessionCounts.realizada})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSessionFilter('cancelada')}
+                    className={`rounded-full px-3 py-1 text-sm font-medium ${sessionFilter === 'cancelada' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    Canceladas ({sessionCounts.cancelada})
+                  </button>
+                </div>
+                <p className="ml-auto text-sm text-slate-500">Filtrando: <span className="font-medium text-slate-700">{sessionFilter}</span></p>
+              </div>
+
               <div className="overflow-hidden rounded-lg border border-slate-200">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-slate-50 text-slate-600">
@@ -999,7 +1045,7 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.sessions.map((session) => {
+                    {filteredSessions.map((session) => {
                       const patient = data.patients.find((item) => item.id === session.patientId);
                       const psychologist = data.psychologists.find((item) => item.id === session.psychologistId);
 
