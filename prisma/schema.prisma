@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum UserRole {
+  ADMIN
+  PSYCHOLOGIST
+}
+
+enum SessionStatus {
+  AGENDADA
+  REALIZADA
+  CANCELADA
+}
+
+enum PaymentStatus {
+  PENDENTE
+  PAGO
+  FALHOU
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  email         String       @unique
+  passwordHash  String
+  role          UserRole     @default(PSYCHOLOGIST)
+  psychologist  Psychologist?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Psychologist {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty String
+  phone     String?
+  patients  Patient[]
+  sessions  Session[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Patient {
+  id             String       @id @default(cuid())
+  psychologistId String
+  psychologist   Psychologist @relation(fields: [psychologistId], references: [id], onDelete: Cascade)
+  name           String
+  email          String?
+  phone          String?
+  notes          String?
+  sessions       Session[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Session {
+  id             String        @id @default(cuid())
+  psychologistId String
+  psychologist   Psychologist  @relation(fields: [psychologistId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date           String
+  time           String
+  status         SessionStatus @default(AGENDADA)
+  value          Float
+  paid           Boolean       @default(false)
+  payment        Payment?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  sessionId String        @unique
+  session   Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  amount    Float
+  status    PaymentStatus @default(PENDENTE)
+  paidAt    DateTime?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}

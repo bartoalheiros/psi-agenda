@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type TabKey = "dashboard" | "psychologists" | "patients" | "sessions" | "payments";
@@ -64,32 +65,45 @@ type SessionForm = {
   paid: boolean;
 };
 
-const STORAGE_KEY = "psi-clinic-crud-v1";
-
-const defaultPsychologists: Psychologist[] = [
-  { id: "psy-1", name: "Dr. Leonardo Silva", specialty: "Psicoterapia Individual", email: "leonardo@psi.com", phone: "(11) 99999-1234" },
-  { id: "psy-2", name: "Dra. Marina Costa", specialty: "Terapia de Casal", email: "marina@psi.com", phone: "(11) 98888-5678" },
-];
-
-const defaultPatients: Patient[] = [
-  { id: "pat-1", name: "Carlos Silva", email: "carlos@gmail.com", phone: "(11) 97777-1111", psychologistId: "psy-1", note: "Ansiedade e rotina profissional" },
-  { id: "pat-2", name: "Mariana Costa", email: "mariana@gmail.com", phone: "(11) 96666-2222", psychologistId: "psy-2", note: "Relacionamentos e comunicação" },
-  { id: "pat-3", name: "Roberto Souza", email: "roberto@gmail.com", phone: "(81) 98888-7777", psychologistId: "psy-1", note: "Acompanhamento para estresse" },
-  { id: "pat-4", name: "Ana Júlia", email: "ana@gmail.com", phone: "(81) 99999-6666", psychologistId: "psy-2", note: "Cuidados com bem-estar emocional" },
-];
-
-const defaultSessions: Session[] = [
-  { id: "ses-1", psychologistId: "psy-1", patientId: "pat-1", date: "2026-08-25", time: "14:00", status: "agendada", value: 600, paid: false },
-  { id: "ses-2", psychologistId: "psy-2", patientId: "pat-2", date: "2026-08-24", time: "15:30", status: "realizada", value: 500, paid: true },
-  { id: "ses-3", psychologistId: "psy-1", patientId: "pat-3", date: "2026-08-22", time: "11:00", status: "agendada", value: 600, paid: false },
-  { id: "ses-4", psychologistId: "psy-2", patientId: "pat-4", date: "2026-08-27", time: "10:00", status: "agendada", value: 150, paid: false },
-];
-
-const defaultData: AppData = {
-  psychologists: defaultPsychologists,
-  patients: defaultPatients,
-  sessions: defaultSessions,
+const normalizeStatus = (value?: string): SessionStatus => {
+  switch (value?.toUpperCase()) {
+    case "REALIZADA":
+      return "realizada";
+    case "CANCELADA":
+      return "cancelada";
+    case "AGENDADA":
+    default:
+      return "agendada";
+  }
 };
+
+const mapPsychologist = (item: Record<string, any>): Psychologist => ({
+  id: item.id,
+  name: item.name ?? item.user?.name ?? "",
+  specialty: item.specialty ?? "",
+  email: item.email ?? item.user?.email ?? "",
+  phone: item.phone ?? "",
+});
+
+const mapPatient = (item: Record<string, any>): Patient => ({
+  id: item.id,
+  name: item.name ?? "",
+  email: item.email ?? "",
+  phone: item.phone ?? "",
+  psychologistId: item.psychologistId,
+  note: item.notes ?? item.note ?? "",
+});
+
+const mapSession = (item: Record<string, any>): Session => ({
+  id: item.id,
+  psychologistId: item.psychologistId,
+  patientId: item.patientId,
+  date: item.date,
+  time: item.time,
+  status: normalizeStatus(item.status),
+  value: Number(item.value ?? 0),
+  paid: Boolean(item.paid),
+});
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", {
@@ -133,44 +147,99 @@ const emptySessionForm = (psychologistId: string, patientId: string): SessionFor
 });
 
 export default function Home() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
-  const [data, setData] = useState<AppData>(defaultData);
+  const [data, setData] = useState<AppData>({ psychologists: [], patients: [], sessions: [] });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("Dr. Leonardo");
   const [selectedDebtor, setSelectedDebtor] = useState<{ id: string; name: string; phone: string; value: number } | null>(null);
 
   const [psychologistForm, setPsychologistForm] = useState<PsychologistForm>(emptyPsychologistForm);
   const [editingPsychologistId, setEditingPsychologistId] = useState<string | null>(null);
 
-  const [patientForm, setPatientForm] = useState<PatientForm>(emptyPatientForm(defaultPsychologists[0]?.id ?? ""));
+  const [patientForm, setPatientForm] = useState<PatientForm>(emptyPatientForm(""));
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
 
-  const [sessionForm, setSessionForm] = useState<SessionForm>(emptySessionForm(defaultPsychologists[0]?.id ?? "", defaultPatients[0]?.id ?? ""));
+  const [sessionForm, setSessionForm] = useState<SessionForm>(emptySessionForm("", ""));
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchDashboardData = async () => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as AppData;
-        if (parsed.psychologists?.length && parsed.patients && parsed.sessions) {
-          setData(parsed);
-          const firstPsychologist = parsed.psychologists[0]?.id ?? "";
-          const firstPatient = parsed.patients[0]?.id ?? "";
-          setPatientForm(emptyPatientForm(firstPsychologist));
-          setSessionForm(emptySessionForm(firstPsychologist, firstPatient));
-        }
+      const [psychologistsResponse, patientsResponse, sessionsResponse] = await Promise.all([
+        fetch("/api/psychologists", { cache: "no-store" }),
+        fetch("/api/patients", { cache: "no-store" }),
+        fetch("/api/sessions", { cache: "no-store" }),
+      ]);
+
+      if ([psychologistsResponse, patientsResponse, sessionsResponse].some((response) => response.status === 401)) {
+        router.push("/signin");
+        return;
+      }
+
+      const psychologistsData = psychologistsResponse.ok ? await psychologistsResponse.json() : { psychologists: [] };
+      const patientsData = patientsResponse.ok ? await patientsResponse.json() : { patients: [] };
+      const sessionsData = sessionsResponse.ok ? await sessionsResponse.json() : { sessions: [] };
+
+      const psychologists = Array.isArray(psychologistsData)
+        ? psychologistsData.map(mapPsychologist)
+        : Array.isArray(psychologistsData.psychologists)
+          ? psychologistsData.psychologists.map(mapPsychologist)
+          : [];
+
+      const patients = Array.isArray(patientsData)
+        ? patientsData.map(mapPatient)
+        : Array.isArray(patientsData.patients)
+          ? patientsData.patients.map(mapPatient)
+          : [];
+
+      const sessions = Array.isArray(sessionsData)
+        ? sessionsData.map(mapSession)
+        : Array.isArray(sessionsData.sessions)
+          ? sessionsData.sessions.map(mapSession)
+          : [];
+
+      setData({ psychologists, patients, sessions });
+
+      if (psychologists.length > 0 && !patientForm.psychologistId) {
+        setPatientForm((current) => ({ ...current, psychologistId: psychologists[0].id }));
+      }
+
+      if (psychologists.length > 0 && !sessionForm.psychologistId) {
+        setSessionForm((current) => ({ ...current, psychologistId: psychologists[0].id }));
+      }
+
+      if (patients.length > 0 && !sessionForm.patientId) {
+        setSessionForm((current) => ({ ...current, patientId: patients[0].id }));
       }
     } catch (error) {
-      console.error("Erro ao carregar dados locais", error);
-    } finally {
-      setIsLoaded(true);
+      console.error("Erro ao carregar dados do backend", error);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    if (!isLoaded) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [data, isLoaded]);
+    const initialize = async () => {
+      try {
+        const meResponse = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!meResponse.ok) {
+          router.push("/signin");
+          return;
+        }
+
+        const meData = await meResponse.json();
+        if (meData?.user?.name) {
+          setCurrentUserName(meData.user.name);
+        }
+
+        await fetchDashboardData();
+      } catch (error) {
+        console.error("Erro ao inicializar aplicação", error);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+
+    void initialize();
+  }, [router]);
 
   useEffect(() => {
     if (!data.psychologists.length) {
@@ -240,33 +309,39 @@ export default function Home() {
     [data],
   );
 
-  const savePsychologist = (event: React.FormEvent) => {
+  const savePsychologist = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!psychologistForm.name.trim()) return;
+    const payload = {
+      name: psychologistForm.name.trim(),
+      specialty: psychologistForm.specialty.trim(),
+      email: psychologistForm.email.trim(),
+      phone: psychologistForm.phone.trim(),
+    };
 
-    if (editingPsychologistId) {
-      setData((current) => ({
-        ...current,
-        psychologists: current.psychologists.map((psychologist) =>
-          psychologist.id === editingPsychologistId ? { ...psychologist, ...psychologistForm } : psychologist,
-        ),
-      }));
-    } else {
-      setData((current) => ({
-        ...current,
-        psychologists: [
-          ...current.psychologists,
-          {
-            id: createId("psy"),
-            ...psychologistForm,
-          },
-        ],
-      }));
+    if (!payload.name || !payload.specialty) return;
+
+    try {
+      const response = await fetch(
+        editingPsychologistId ? `/api/psychologists/${editingPsychologistId}` : "/api/psychologists",
+        {
+          method: editingPsychologistId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error ?? "Não foi possível salvar o psicólogo.");
+      }
+
+      setPsychologistForm(emptyPsychologistForm);
+      setEditingPsychologistId(null);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Erro ao salvar psicólogo", error);
     }
-
-    setPsychologistForm(emptyPsychologistForm);
-    setEditingPsychologistId(null);
   };
 
   const editPsychologist = (psychologist: Psychologist) => {
